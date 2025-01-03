@@ -33,7 +33,7 @@ spec:
           ui:options:
             catalogFilter:
               kind:
-                - Group
+                - User
         system:
           title: System
           type: string

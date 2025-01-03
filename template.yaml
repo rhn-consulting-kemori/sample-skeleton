@@ -1,0 +1,118 @@
+apiVersion: scaffolder.backstage.io/v1beta3
+kind: Template
+metadata:
+  name: sample-app-template
+  title: Create a sample application with a CI pipeline
+  description: Provides the sample code and CI pipeline to build and deploy a sample application on OpenShift.
+  tags:
+    - recommended
+spec:
+  owner: user:default/rhn-consulting-kemori
+  type: service
+
+  parameters:
+    - title: Provide information about the new component
+      required:
+        - app_name
+        - owner
+        - system
+      properties:
+        app_name:
+          title: Repository Name
+          type: string
+          default: "sample-app"
+        description:
+          title: Description
+          type: string
+          description: Help others understand what this component is for
+        owner:
+          title: Owner
+          type: string
+          description: Owner of the component
+          ui:field: OwnerPicker
+          ui:options:
+            catalogFilter:
+              kind:
+                - Group
+        system:
+          title: System
+          type: string
+          ui:field: EntityPicker
+          ui:options:
+            catalogFilter:
+              kind:
+                - System
+
+    - title: Provide information about the git to used
+      required:
+        - git
+        - git_host_url
+        - git_owner_name
+      properties:
+        git:
+          title: Git of Destination
+          type: string
+          description: This action will store the application source code on the selected Git server
+          enum:
+            - github
+          enumNames:
+            - GitHub
+      dependencies:
+        git:
+          oneOf:
+            - properties:
+                git:
+                  enum:
+                    - github
+                git_host_url:
+                  title: Git Host URL
+                  type: string
+                  default: github.com
+                  description: Specify the GitHub or GitLab host URL(e.g., github.com)
+                git_owner_name:
+                  title: GitHub Organization Name or User Name
+                  type: string
+                  description: Specify the GitHub Organization or User to register the repository
+  steps:
+    - id: app_template
+      name: Generating the Application Source Code Component
+      action: fetch:template
+      input:
+        url: ./app-skeleton
+        values:
+          git: ${{ parameters.git }}
+          git_host_url: ${{ parameters.git_host_url }}
+          git_owner_name: ${{ parameters.git_owner_name }}
+          app_name: ${{ parameters.app_name }}
+          owner: ${{ parameters.owner }}
+          system: ${{ parameters.system }}
+          description: ${{ parameters.description }}
+        targetPath: ./tenant-app
+
+    - id: publish-app-to-github
+      if: ${{ parameters.git == "github" }}
+      name: Publish App Repository to GitHub
+      action: publish:github
+      input:
+        repoUrl: ${{ parameters.git_host_url }}?owner=${{ parameters.git_owner_name }}&repo=${{ parameters.app_name }}-app
+        repoVisibility: public
+        sourcePath: ./tenant-app
+        defaultBranch: develop
+        protectDefaultBranch: false
+
+    - id: register-to-github
+      if: ${{ parameters.git == "github" }}
+      name: Registering the Catalog Info Component to GitHub
+      action: catalog:register
+      input:
+        repoContentsUrl: ${{ steps['publish-app-to-github'].output.repoContentsUrl }}
+        catalogInfoPath: "/catalog-info.yaml"
+  output:
+    links:
+      - title: Open the Source Code Repository
+        if: ${{ parameters.git == "github" }}
+        url: ${{ steps['publish-app-to-github'].output.remoteUrl }}
+      - title: Open the Catalog Info Component
+        if: ${{ parameters.git == "github" }}
+        icon: catalog
+        entityRef: ${{ steps['register-to-github'].output.entityRef }}
